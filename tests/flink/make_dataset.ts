@@ -1,6 +1,6 @@
 // Writes tests/flink/data/events.jsonl: 20 minutes of generated recentchange
 // events, flattened to the recentchange table's columns, in Kafka order.
-import { writeFileSync } from "node:fs";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { eventsBetween } from "../../dev/generator.ts";
 import { toChange } from "../../shared/change.ts";
 
