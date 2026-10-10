@@ -12,5 +12,6 @@ for (const g of eventsBetween(start, start + 20 * 60_000)) {
   const { topic: _t, partition: _p, offset: _o, ...row } = v.change;
   lines.push(JSON.stringify(row));
 }
+mkdirSync(new URL("./data/", import.meta.url), { recursive: true });
 writeFileSync(new URL("./data/events.jsonl", import.meta.url), lines.join("\n") + "\n");
 console.log(`wrote ${lines.length} events`);
