@@ -1,0 +1,154 @@
+{
+ "flink": "2.3.0",
+ "events": 26453,
+ "checked": 15010,
+ "queries": [
+  {
+   "id": "pulse",
+   "title": "Changes per 10 seconds, by project",
+   "rows": 603,
+   "messages": 603,
+   "flinkMessages": 603,
+   "match": true
+  },
+  {
+   "id": "editors",
+   "title": "People and bots",
+   "rows": 121,
+   "messages": 121,
+   "flinkMessages": 121,
+   "match": true
+  },
+  {
+   "id": "trending",
+   "title": "Trending articles",
+   "rows": 291,
+   "messages": 291,
+   "flinkMessages": 291,
+   "match": true
+  },
+  {
+   "id": "newPages",
+   "title": "New articles",
+   "rows": 566,
+   "messages": 566,
+   "flinkMessages": 566,
+   "match": true
+  },
+  {
+   "id": "bigChanges",
+   "title": "Big changes",
+   "rows": 453,
+   "messages": 453,
+   "flinkMessages": 453,
+   "match": true
+  },
+  {
+   "id": "sessions",
+   "title": "Editing sessions",
+   "rows": 25,
+   "messages": 25,
+   "flinkMessages": 25,
+   "match": true
+  },
+  {
+   "id": "cumulate",
+   "title": "Running total per hour",
+   "rows": 61,
+   "messages": 61,
+   "flinkMessages": 61,
+   "match": true
+  },
+  {
+   "id": "changelog",
+   "title": "Running totals per wiki (changelog)",
+   "rows": 27,
+   "messages": 51853,
+   "flinkMessages": 51853,
+   "match": true
+  },
+  {
+   "id": "biggestPerWindow",
+   "title": "Biggest change every 5 minutes",
+   "rows": 13,
+   "messages": 13,
+   "flinkMessages": 13,
+   "match": true
+  },
+  {
+   "id": "indic",
+   "title": "Indian-language Wikipedias",
+   "rows": 76,
+   "messages": 76,
+   "flinkMessages": 76,
+   "match": true
+  },
+  {
+   "id": "late",
+   "title": "Spot late events",
+   "rows": 3602,
+   "messages": 3602,
+   "flinkMessages": 3602,
+   "match": true
+  },
+  {
+   "id": "tumbleOffset",
+   "title": "Tumble with offset",
+   "rows": 84,
+   "messages": 84,
+   "flinkMessages": 84,
+   "match": true
+  },
+  {
+   "id": "tvfRows",
+   "title": "Window TVF rows",
+   "rows": 5166,
+   "messages": 5166,
+   "flinkMessages": 5166,
+   "match": true
+  },
+  {
+   "id": "expressions",
+   "title": "Expressions",
+   "rows": 3743,
+   "messages": 3743,
+   "flinkMessages": 3743,
+   "match": true
+  },
+  {
+   "id": "distinctPairs",
+   "title": "Distinct",
+   "rows": 103,
+   "messages": 103,
+   "flinkMessages": 103,
+   "match": true
+  },
+  {
+   "id": "globalAgg",
+   "title": "Global aggregate",
+   "rows": 1,
+   "messages": 52905,
+   "flinkMessages": 52905,
+   "match": true
+  },
+  {
+   "id": "having",
+   "title": "Having",
+   "rows": 60,
+   "messages": 60,
+   "flinkMessages": 60,
+   "match": true
+  },
+  {
+   "id": "editWars",
+   "title": "Edit wars (MATCH_RECOGNIZE)",
+   "rows": 15,
+   "messages": 15,
+   "flinkMessages": 15,
+   "match": true
+  }
+ ],
+ "allMatch": true,
+ "settings": "parallelism 1, table.local-time-zone = UTC, pipeline.auto-watermark-interval = 0 ms, watermark = event_time - 5 s",
+ "editWarsSql": "SELECT wiki, title, first_revert, third_revert\nFROM recentchange\nMATCH_RECOGNIZE (\n  PARTITION BY wiki, title\n  ORDER BY event_time\n  MEASURES\n    R1.event_time AS first_revert,\n    R3.event_time AS third_revert\n  ONE ROW PER MATCH\n  AFTER MATCH SKIP PAST LAST ROW\n  PATTERN (R1 O1*? R2 O2*? R3) WITHIN INTERVAL '15' MINUTE\n  DEFINE\n    R1 AS REGEXP(R1.edit_comment, '(?iu)(undid revision|undo revision|reverted edits? by|reverted to revision|restored revision|^rvv?\\b|^revert|rückgängig|annulation|revertid|annullat|отмена правки|отменены правки|取り消し|ロールバック)'),\n    R2 AS REGEXP(R2.edit_comment, '(?iu)(undid revision|undo revision|reverted edits? by|reverted to revision|restored revision|^rvv?\\b|^revert|rückgängig|annulation|revertid|annullat|отмена правки|отменены правки|取り消し|ロールバック)'),\n    R3 AS REGEXP(R3.edit_comment, '(?iu)(undid revision|undo revision|reverted edits? by|reverted to revision|restored revision|^rvv?\\b|^revert|rückgängig|annulation|revertid|annullat|отмена правки|отменены правки|取り消し|ロールバック)') AND (R2.user_name <> R1.user_name OR R3.user_name <> R1.user_name),\n    O1 AS NOT REGEXP(O1.edit_comment, '(?iu)(undid revision|undo revision|reverted edits? by|reverted to revision|restored revision|^rvv?\\b|^revert|rückgängig|annulation|revertid|annullat|отмена правки|отменены правки|取り消し|ロールバック)'),\n    O2 AS NOT REGEXP(O2.edit_comment, '(?iu)(undid revision|undo revision|reverted edits? by|reverted to revision|restored revision|^rvv?\\b|^revert|rückgängig|annulation|revertid|annullat|отмена правки|отменены правки|取り消し|ロールバック)')\n)"
+}

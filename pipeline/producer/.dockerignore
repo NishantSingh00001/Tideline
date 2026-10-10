@@ -1,0 +1,6 @@
+__pycache__
+.pytest_cache
+fixtures
+test_*.py
+requirements-dev.txt
+position.json

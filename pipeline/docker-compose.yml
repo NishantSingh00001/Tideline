@@ -1,0 +1,140 @@
+# Tideline on real Kafka and Flink.
+#
+#   cd pipeline
+#   docker compose up -d --build        # Kafka, Schema Registry, Flink, producer
+#   docker compose run --rm sql-submit  # submit the Flink SQL jobs
+#
+# Flink dashboard: http://localhost:8082   Schema Registry: http://localhost:8081
+# Kafka from your machine: localhost:29092
+# See pipeline/README.md for what to look at once it runs.
+
+name: tideline
+
+x-flink-properties: &flink-properties
+  FLINK_PROPERTIES: |
+    jobmanager.rpc.address: jobmanager
+    rest.address: jobmanager
+    taskmanager.numberOfTaskSlots: 4
+    parallelism.default: 2
+    state.backend.type: rocksdb
+    state.checkpoints.dir: file:///flink-checkpoints
+    execution.checkpointing.interval: 10 s
+    table.local-time-zone: UTC
+
+services:
+  kafka:
+    image: apache/kafka:3.9.1
+    hostname: kafka
+    ports:
+      - "29092:29092"
+    environment:
+      # One node in KRaft mode: broker and controller, no ZooKeeper.
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_LISTENERS: INTERNAL://:9092,CONTROLLER://:9093,EXTERNAL://:29092
+      KAFKA_ADVERTISED_LISTENERS: INTERNAL://kafka:9092,EXTERNAL://localhost:29092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: INTERNAL:PLAINTEXT,CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: INTERNAL
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server kafka:9092 > /dev/null 2>&1"]
+      interval: 5s
+      timeout: 10s
+      retries: 30
+
+  # Creates the topics once, then exits. Six partitions for the change stream
+  # (keyed by wiki), compaction for the upserted totals.
+  topics:
+    image: apache/kafka:3.9.1
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        set -e
+        t() { /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --create --if-not-exists "$$@"; }
+        t --topic wikimedia.recentchange     --partitions 6 --replication-factor 1 --config retention.ms=86400000 --config compression.type=producer
+        t --topic wikimedia.recentchange.dlq --partitions 1 --replication-factor 1 --config retention.ms=604800000
+        for name in pulse editors trending new-pages edit-wars; do
+          t --topic "tideline.$$name" --partitions 1 --replication-factor 1 --config retention.ms=86400000
+        done
+        t --topic tideline.wiki-totals --partitions 1 --replication-factor 1 --config cleanup.policy=compact
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --describe --topic wikimedia.recentchange
+    restart: "no"
+
+  schema-registry:
+    image: confluentinc/cp-schema-registry:7.9.1
+    hostname: schema-registry
+    depends_on:
+      topics:
+        condition: service_completed_successfully
+    ports:
+      - "8081:8081"
+    environment:
+      SCHEMA_REGISTRY_HOST_NAME: schema-registry
+      SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: PLAINTEXT://kafka:9092
+      # New schema versions must still read old data and vice versa.
+      SCHEMA_REGISTRY_SCHEMA_COMPATIBILITY_LEVEL: full_transitive
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:8081/subjects > /dev/null"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  producer:
+    build: ./producer
+    depends_on:
+      schema-registry:
+        condition: service_healthy
+    environment:
+      BOOTSTRAP_SERVERS: kafka:9092
+      SCHEMA_REGISTRY_URL: http://schema-registry:8081
+      # Wikimedia asks API clients for contact details in the User-Agent.
+      CONTACT: ${CONTACT:-https://github.com/NishantSingh00001/Tideline}
+    volumes:
+      - producer-state:/state
+    restart: unless-stopped
+
+  jobmanager:
+    build: ./flink
+    hostname: jobmanager
+    command: jobmanager
+    ports:
+      - "8082:8081"
+    environment:
+      <<: *flink-properties
+    volumes:
+      - flink-checkpoints:/flink-checkpoints
+
+  taskmanager:
+    build: ./flink
+    command: taskmanager
+    depends_on:
+      - jobmanager
+    environment:
+      <<: *flink-properties
+    volumes:
+      - flink-checkpoints:/flink-checkpoints
+
+  # Submits the generated SQL (pipeline/flink/sql) as one job and exits.
+  sql-submit:
+    build: ./flink
+    profiles: ["submit"]
+    depends_on:
+      - jobmanager
+      - schema-registry
+    environment:
+      <<: *flink-properties
+    command: ["bin/sql-client.sh", "-i", "/opt/tideline/sql/00_tables.sql", "-f", "/opt/tideline/sql/10_jobs.sql"]
+
+volumes:
+  producer-state:
+  flink-checkpoints:

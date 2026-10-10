@@ -1,0 +1,23 @@
+{
+  "type": "record",
+  "name": "RecentChange",
+  "namespace": "io.tideline",
+  "doc": "One change from Wikimedia's mediawiki.recentchange stream, flattened (meta.id -> id, length.old -> len_old, ...).",
+  "fields": [
+    { "name": "id", "type": "string", "doc": "meta.id, a UUID; the deduplication key" },
+    { "name": "change_type", "type": "string", "doc": "edit, new, log, categorize or external" },
+    { "name": "wiki", "type": "string", "doc": "Database name, e.g. enwiki; also the record key" },
+    { "name": "server_name", "type": "string" },
+    { "name": "title", "type": "string" },
+    { "name": "ns", "type": "int" },
+    { "name": "user_name", "type": "string" },
+    { "name": "is_bot", "type": "boolean" },
+    { "name": "is_minor", "type": "boolean" },
+    { "name": "len_old", "type": ["null", "int"], "default": null },
+    { "name": "len_new", "type": ["null", "int"], "default": null },
+    { "name": "edit_comment", "type": "string" },
+    { "name": "log_type", "type": ["null", "string"], "default": null },
+    { "name": "rev_id", "type": ["null", "long"], "default": null },
+    { "name": "ts_ms", "type": "long", "doc": "Event time (meta.dt) in epoch milliseconds" }
+  ]
+}

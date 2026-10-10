@@ -1,0 +1,38 @@
+{
+  "name": "tideline",
+  "version": "1.0.0",
+  "description": "Stream processing on Wikipedia's live edit stream: Flink-style event-time windows, watermarks and Flink SQL in the browser, checked against real Apache Flink.",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "mock": "node --experimental-transform-types --disable-warning=ExperimentalWarning dev/mock-eventstreams.ts",
+    "test": "node --experimental-transform-types --disable-warning=ExperimentalWarning tests/run.ts",
+    "parity:data": "node --experimental-transform-types --disable-warning=ExperimentalWarning tests/flink/make_dataset.ts && node --experimental-transform-types --disable-warning=ExperimentalWarning tests/flink/export_queries.ts",
+    "flink:sql": "node --experimental-transform-types --disable-warning=ExperimentalWarning pipeline/flink/generate.ts"
+  },
+  "author": "Nishant Singh",
+  "license": "MIT",
+  "dependencies": {
+    "@fontsource-variable/newsreader": "^5.3.0",
+    "@fontsource-variable/sofia-sans": "^5.3.0",
+    "@fontsource-variable/sofia-sans-condensed": "^5.3.0",
+    "@fontsource/fragment-mono": "^5.3.0",
+    "@netlify/blobs": "^11.1.1",
+    "framer-motion": "^11.18.2",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.30.1",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@netlify/functions": "^6.0.0",
+    "@types/node": "^22.20.4",
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
+    "@vitejs/plugin-react": "^4.7.0",
+    "typescript": "^5.9.3",
+    "vite": "^5.4.21"
+  }
+}

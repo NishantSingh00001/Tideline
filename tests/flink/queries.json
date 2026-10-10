@@ -1,0 +1,73 @@
+{
+  "queries": [
+    {
+      "id": "pulse",
+      "sql": "SELECT window_start, window_end,\n  CASE\n    WHEN wiki = 'wikidatawiki' THEN 'Wikidata'\n    WHEN wiki = 'commonswiki' THEN 'Commons'\n    WHEN wiki = 'enwiki' THEN 'English Wikipedia'\n    WHEN server_name LIKE '%.wikipedia.org' THEN 'Other Wikipedias'\n    ELSE 'Other projects'\n  END AS project,\n  COUNT(*) AS changes\nFROM TABLE(\n  TUMBLE(TABLE recentchange, DESCRIPTOR(event_time), INTERVAL '10' SECOND))\nGROUP BY window_start, window_end,\n  CASE\n    WHEN wiki = 'wikidatawiki' THEN 'Wikidata'\n    WHEN wiki = 'commonswiki' THEN 'Commons'\n    WHEN wiki = 'enwiki' THEN 'English Wikipedia'\n    WHEN server_name LIKE '%.wikipedia.org' THEN 'Other Wikipedias'\n    ELSE 'Other projects'\n  END"
+    },
+    {
+      "id": "editors",
+      "sql": "SELECT window_start, window_end,\n  COUNT(*) FILTER (WHERE NOT is_bot) AS by_people,\n  COUNT(*) FILTER (WHERE is_bot) AS by_bots,\n  COUNT(DISTINCT user_name) AS accounts\nFROM TABLE(\n  TUMBLE(TABLE recentchange, DESCRIPTOR(event_time), INTERVAL '10' SECOND))\nGROUP BY window_start, window_end"
+    },
+    {
+      "id": "trending",
+      "sql": "SELECT *\nFROM (\n  SELECT *,\n    ROW_NUMBER() OVER (\n      PARTITION BY window_start, window_end\n      ORDER BY edits DESC, editors DESC, title, server_name) AS rownum\n  FROM (\n    SELECT window_start, window_end, server_name, title,\n      COUNT(*) AS edits,\n      COUNT(DISTINCT user_name) AS editors,\n      SUM(delta) AS net_bytes\n    FROM TABLE(\n      HOP(TABLE recentchange, DESCRIPTOR(event_time),\n          INTERVAL '1' MINUTE, INTERVAL '10' MINUTES))\n    WHERE ns = 0 AND NOT is_bot\n      AND change_type IN ('edit', 'new')\n      AND server_name LIKE '%.wikipedia.org'\n    GROUP BY window_start, window_end, server_name, title\n  )\n)\nWHERE rownum <= 10"
+    },
+    {
+      "id": "newPages",
+      "sql": "SELECT event_time, server_name, title, user_name, len_new\nFROM recentchange\nWHERE change_type = 'new' AND ns = 0 AND NOT is_bot"
+    },
+    {
+      "id": "bigChanges",
+      "sql": "SELECT event_time, server_name, title, user_name, delta\nFROM recentchange\nWHERE change_type = 'edit' AND ABS(delta) >= 10000"
+    },
+    {
+      "id": "sessions",
+      "sql": "SELECT window_start, window_end, user_name,\n  COUNT(*) AS changes,\n  COUNT(DISTINCT title) AS pages,\n  SUM(ABS(delta)) AS bytes_touched\nFROM TABLE(\n  SESSION(TABLE recentchange PARTITION BY user_name,\n          DESCRIPTOR(event_time), INTERVAL '5' MINUTES))\nWHERE NOT is_bot\nGROUP BY window_start, window_end, user_name\nHAVING COUNT(*) >= 3"
+    },
+    {
+      "id": "cumulate",
+      "sql": "SELECT window_start, window_end,\n  COUNT(*) AS changes,\n  COUNT(*) FILTER (WHERE change_type = 'new') AS new_pages,\n  SUM(delta) AS net_bytes\nFROM TABLE(\n  CUMULATE(TABLE recentchange, DESCRIPTOR(event_time),\n           INTERVAL '1' MINUTE, INTERVAL '1' HOUR))\nGROUP BY window_start, window_end"
+    },
+    {
+      "id": "changelog",
+      "sql": "SELECT wiki,\n  COUNT(*) AS changes,\n  COUNT(*) FILTER (WHERE is_bot) AS bot_changes,\n  MAX(event_time) AS last_change\nFROM recentchange\nGROUP BY wiki\nHAVING COUNT(*) >= 20"
+    },
+    {
+      "id": "biggestPerWindow",
+      "sql": "SELECT *\nFROM (\n  SELECT window_start, window_end, server_name, title, user_name, delta,\n    ROW_NUMBER() OVER (\n      PARTITION BY window_start, window_end\n      ORDER BY delta DESC, id) AS rownum\n  FROM TABLE(\n    TUMBLE(TABLE recentchange, DESCRIPTOR(event_time), INTERVAL '5' MINUTES))\n  WHERE change_type = 'edit' AND delta IS NOT NULL\n)\nWHERE rownum <= 3"
+    },
+    {
+      "id": "indic",
+      "sql": "SELECT window_start, wiki,\n  COUNT(*) AS changes,\n  COUNT(DISTINCT user_name) AS editors\nFROM TABLE(\n  TUMBLE(TABLE recentchange, DESCRIPTOR(event_time), INTERVAL '1' MINUTE))\nWHERE wiki IN ('hiwiki', 'mrwiki', 'bnwiki', 'tawiki')\nGROUP BY window_start, window_end, wiki"
+    },
+    {
+      "id": "late",
+      "sql": "SELECT event_time,\n  CURRENT_WATERMARK(event_time) AS wm,\n  change_type, server_name, title\nFROM recentchange\nWHERE event_time <= CURRENT_WATERMARK(event_time)"
+    },
+    {
+      "id": "tumbleOffset",
+      "sql": "SELECT window_start, window_end, change_type, COUNT(*) AS n, MIN(delta) AS min_delta, MAX(delta) AS max_delta, AVG(delta) AS avg_delta\nFROM TABLE(TUMBLE(TABLE recentchange, DESCRIPTOR(event_time), INTERVAL '1' MINUTE, INTERVAL '15' SECOND))\nGROUP BY window_start, window_end, change_type"
+    },
+    {
+      "id": "tvfRows",
+      "sql": "SELECT id, window_start, window_end, change_type\nFROM TABLE(TUMBLE(TABLE recentchange, DESCRIPTOR(event_time), INTERVAL '30' SECOND))\nWHERE change_type IN ('new', 'categorize')"
+    },
+    {
+      "id": "expressions",
+      "sql": "SELECT id,\n  LOWER(wiki) AS w, UPPER(SUBSTRING(title FROM 1 FOR 3)) AS t3, CHAR_LENGTH(title) AS len,\n  delta / 7 AS idiv, delta % 7 AS imod, CAST(delta AS DOUBLE) / 4 AS ddiv, ROUND(CAST(delta AS DOUBLE) / 3, 2) AS r2,\n  COALESCE(len_old, -1) AS lo, NULLIF(ns, 0) AS nz, IF(is_bot, 'bot', 'person') AS who,\n  CASE WHEN delta > 0 THEN 'grew' WHEN delta < 0 THEN 'shrank' ELSE 'same' END AS dir,\n  REGEXP(edit_comment, '(?i)revert|undid') AS rv, SPLIT_INDEX(server_name, '.', 0) AS lang,\n  CONCAT(wiki, ':', CAST(ns AS STRING)) AS wk, DATE_FORMAT(event_time, 'HH:mm:ss') AS hms,\n  title LIKE 'Q%' AS q, ns BETWEEN 1 AND 6 AS ns16, EXTRACT(MINUTE FROM event_time) AS mi,\n  REPLACE(change_type, 'e', 'E') AS ct, POSITION('.' IN server_name) AS dot_at, ABS(delta) AS ad,\n  CAST(is_minor AS STRING) AS ms, TRIM(BOTH ' ' FROM '  x  ') AS tr, rev_id % 1000 AS rv3\nFROM recentchange\nWHERE MOD(CAST(ts_ms / 1000 AS INT), 7) = 0"
+    },
+    {
+      "id": "distinctPairs",
+      "sql": "SELECT DISTINCT wiki, change_type FROM recentchange WHERE wiki LIKE '%wiki'"
+    },
+    {
+      "id": "globalAgg",
+      "sql": "SELECT COUNT(*) AS n, COUNT(DISTINCT wiki) AS wikis, SUM(CASE WHEN is_bot THEN 1 ELSE 0 END) AS bots, MAX(len_new) AS biggest, MIN(title) AS first_title\nFROM recentchange"
+    },
+    {
+      "id": "having",
+      "sql": "SELECT window_start, window_end, wiki, COUNT(*) AS n, SUM(delta) AS net\nFROM TABLE(TUMBLE(TABLE recentchange, DESCRIPTOR(event_time), INTERVAL '1' MINUTE))\nGROUP BY window_start, window_end, wiki\nHAVING COUNT(*) > 100 AND SUM(delta) IS NOT NULL"
+    }
+  ],
+  "revertPattern": "(?iu)(undid revision|undo revision|reverted edits? by|reverted to revision|restored revision|^rvv?\\b|^revert|rückgängig|annulation|revertid|annullat|отмена правки|отменены правки|取り消し|ロールバック)"
+}
